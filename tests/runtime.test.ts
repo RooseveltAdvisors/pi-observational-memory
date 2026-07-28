@@ -99,13 +99,15 @@ describe("Runtime V3 behavior", () => {
 
 	it("points OAuth providers at /login when auth resolution fails", async () => {
 		const runtime = new Runtime();
+		const model = { provider: "openai-codex", id: "gpt-5-codex" };
 		const registry = {
 			...modelRegistry({ auth: { ok: false, error: "refresh failed" } }),
-			isUsingOAuth: vi.fn(() => true),
+			isUsingOAuth: vi.fn((candidate: { provider?: string }) => candidate?.provider === "openai-codex"),
 		};
 
-		const result = await runtime.resolveModel({ model: { provider: "openai-codex" }, modelRegistry: registry, hasUI: false });
+		const result = await runtime.resolveModel({ model, modelRegistry: registry, hasUI: false });
 
+		expect(registry.isUsingOAuth).toHaveBeenCalledWith(model);
 		expect(result).toEqual({
 			ok: false,
 			reason: 'authentication failed for provider "openai-codex" — OAuth credentials may have expired; run \'/login openai-codex\' to re-authenticate',

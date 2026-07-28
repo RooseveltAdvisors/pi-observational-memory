@@ -73,7 +73,7 @@ export class Runtime {
 		const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
 		const provider = (model as { provider?: string }).provider ?? "unknown";
 		if (!auth.ok || !hasUsableAuth(auth)) {
-			const isOAuth = ctx.modelRegistry.isUsingOAuth?.(provider) === true;
+			const isOAuth = ctx.modelRegistry.isUsingOAuth?.(model) === true;
 			const reason = isOAuth
 				? `authentication failed for provider "${provider}" — OAuth credentials may have expired; run '/login ${provider}' to re-authenticate`
 				: `no API key or auth headers for provider "${provider}"`;
