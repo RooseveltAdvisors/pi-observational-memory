@@ -49,8 +49,10 @@ function setup(args: {
 	passive?: boolean;
 	consolidationInFlight?: boolean;
 	appendEntryReturnsId?: boolean;
+	sessionId?: string;
 }) {
 	let entries = [...args.entries];
+	let sessionId = args.sessionId ?? "session-1";
 	const handlers: Record<string, ((event: unknown, ctx: any) => void) | undefined> = {};
 	const pi = {
 		on: vi.fn((eventName: string, cb: (event: unknown, ctx: any) => void) => {
@@ -106,7 +108,10 @@ function setup(args: {
 		ui: { notify: vi.fn() },
 		model: { provider: "session" },
 		modelRegistry: {},
-		sessionManager: { getBranch: () => entries },
+		sessionManager: {
+			getBranch: () => entries,
+			getSessionId: () => sessionId,
+		},
 	};
 	return {
 		pi,
@@ -118,6 +123,9 @@ function setup(args: {
 		runLaunchedWork: async () => launchedWork?.(),
 		addEntries: (...more: TestEntry[]) => {
 			entries = [...entries, ...more];
+		},
+		setSessionId: (next: string) => {
+			sessionId = next;
 		},
 		getEntries: () => entries,
 	};
@@ -349,7 +357,11 @@ describe("V3 consolidation trigger", () => {
 		fire();
 		await runLaunchedWork();
 		expect(mockAgents.runObserver).toHaveBeenCalledTimes(1);
-		expect(runtime.observerEmptyBackoff).toEqual({ coverageId: undefined, tokensAtEmpty: 10 });
+		expect(runtime.observerEmptyBackoff).toEqual({
+			sessionIdentity: "session-1",
+			coverageId: undefined,
+			tokensAtEmpty: 10,
+		});
 
 		// Same span, only 5 new tokens (< observeAfterTokens more): no re-fire.
 		addEntries(textCustomMessage("raw-2", "b".repeat(20)));
@@ -367,6 +379,26 @@ describe("V3 consolidation trigger", () => {
 		await runLaunchedWork();
 		expect(mockAgents.runObserver).toHaveBeenCalledTimes(2);
 		expect(runtime.observerEmptyBackoff).toBeUndefined();
+	});
+
+	it("does not apply deliberate-empty backoff to another session", async () => {
+		const entries = [textCustomMessage("raw-1", "a".repeat(40))];
+		const { fire, runLaunchedWork, runtime, setSessionId } = setup({
+			entries,
+			observeAfterTokens: 10,
+			reflectAfterTokens: 999,
+		});
+
+		fire();
+		await runLaunchedWork();
+		expect(mockAgents.runObserver).toHaveBeenCalledTimes(1);
+
+		runtime.consolidationInFlight = false;
+		setSessionId("session-2");
+		fire();
+		await runLaunchedWork();
+
+		expect(mockAgents.runObserver).toHaveBeenCalledTimes(2);
 	});
 
 	it("surfaces API stream errors as observer failure, never as empty", async () => {

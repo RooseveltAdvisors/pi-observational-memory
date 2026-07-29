@@ -50,7 +50,11 @@ export class Runtime {
 	lastReflectorError: string | undefined;
 	lastDropperError: string | undefined;
 	/** Deliberate-empty backoff (#23): skip observer re-fires over the same span until enough new tokens arrive. */
-	observerEmptyBackoff: { coverageId: string | undefined; tokensAtEmpty: number } | undefined;
+	observerEmptyBackoff: {
+		sessionIdentity: string | undefined;
+		coverageId: string | undefined;
+		tokensAtEmpty: number;
+	} | undefined;
 
 	ensureConfig(cwd: string): void {
 		if (this.configLoaded) return;

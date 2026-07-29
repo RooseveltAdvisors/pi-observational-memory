@@ -210,6 +210,8 @@ async function runObserverStage(
 	const tokens = rawTokensSinceObservationCoverage(entries);
 	if (tokens < runtime.config.observeAfterTokens) return "continue";
 
+	const sessionMetadata = debugSessionMetadata(ctx);
+	const sessionIdentity = sessionMetadata.sessionId ?? sessionMetadata.sessionFile;
 	const coverageId = latestCoverageMarkerId(entries, OM_OBSERVATIONS_RECORDED);
 
 	// Deliberate-empty backoff (#23): an intentional "nothing to record" verdict
@@ -218,7 +220,11 @@ async function runObserverStage(
 	// drop the backoff as soon as coverage advances.
 	const backoff = runtime.observerEmptyBackoff;
 	if (backoff) {
-		if (coverageId !== backoff.coverageId || tokens >= backoff.tokensAtEmpty + runtime.config.observeAfterTokens) {
+		if (
+			sessionIdentity !== backoff.sessionIdentity
+			|| coverageId !== backoff.coverageId
+			|| tokens >= backoff.tokensAtEmpty + runtime.config.observeAfterTokens
+		) {
 			runtime.observerEmptyBackoff = undefined;
 		} else {
 			debugLog("observer.empty_backoff", { tokens, resumeAtTokens: backoff.tokensAtEmpty + runtime.config.observeAfterTokens });
@@ -294,7 +300,7 @@ async function runObserverStage(
 		// Deliberate empty: routine info, not a warning, and back off re-fires
 		// over the same span (#23).
 		debugLog("observer.empty", { coversUpToId });
-		runtime.observerEmptyBackoff = { coverageId, tokensAtEmpty: tokens };
+		runtime.observerEmptyBackoff = { sessionIdentity, coverageId, tokensAtEmpty: tokens };
 		if (shouldNotifyWorker(runtime, ctx)) ctx.ui?.notify(
 			"Observational memory: observer found nothing new in this chunk (coverage unchanged; will retry later)",
 			"info",
