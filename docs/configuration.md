@@ -153,7 +153,7 @@ Set `model` when you want the observer, reflector, and dropper to use a cheaper 
 
 Default: `true`.
 
-When `false`, the extension hides routine observer, reflector, and dropper progress notifications. Model fallback/unavailability, no-output warnings, worker failures, compaction notifications, and explicit `/om:*` command output remain visible.
+When `false`, the extension hides routine observer, reflector, and dropper progress notifications (including deliberate-empty observer info messages). Model fallback/unavailability, worker failures (including observer stream errors), compaction notifications, and explicit `/om:*` command output remain visible.
 
 ## `passive`
 

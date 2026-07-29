@@ -173,7 +173,7 @@ The observer trigger runs on `turn_end`.
 11. Compute deterministic 12-character ids and per-observation token counts in code.
 12. Append `om.observations.recorded` only if at least one observation was accepted.
 
-If no observations are generated, the worker writes no entry and does not advance coverage. A later eligible observer run will see a larger range.
+If no observations are generated, the worker writes no entry and does not advance coverage. A later eligible observer run will see a larger range. Deliberate empty runs back off until another `observeAfterTokens` worth of new source tokens arrives, so they do not re-fire every turn. Observer chunks are capped (oldest-first) so an oversized uncovered span drains in slices instead of stalling, and API/stream failures surface as `observer failed` / `observer.stream_error` rather than as an empty run.
 
 ## Reflect/drop flow
 
