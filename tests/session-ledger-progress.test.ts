@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+	contextTokensFromUsage,
 	earlierCoverageMarkerId,
 	entryIndexById,
 	isSourceEntry,
@@ -11,6 +12,7 @@ import {
 	rawTokensSinceLastCompaction,
 	rawTokensSinceObservationCoverage,
 	rawTokensSinceReflectionCoverage,
+	realTokensSinceAnchor,
 } from "../src/session-ledger/index.js";
 import {
 	V3_OBSERVATIONS_DROPPED,
@@ -139,5 +141,45 @@ describe("session-ledger V3 progress helpers", () => {
 		];
 
 		expect(rawTokensSinceLastCompaction(entries)).toBe(3); // raw-1 + raw-2 from live tail starting at firstKeptEntryId
+	});
+
+	it("normalizes provider usage and measures growth from coverage or compaction", () => {
+		expect(contextTokensFromUsage({ totalTokens: 120, input: 1, output: 2 })).toBe(120);
+		expect(contextTokensFromUsage({ input: 10, output: 5, cacheRead: 2, cacheWrite: 3 })).toBe(20);
+		expect(contextTokensFromUsage({ totalTokens: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0 })).toBeUndefined();
+
+		const coveredEntries = [
+			textCustomMessage("raw-1", "a"),
+			{
+				type: "message",
+				id: "assistant-1",
+				parentId: null,
+				timestamp: "2026-05-02T10:00:00.000Z",
+				message: { role: "assistant", stopReason: "end_turn", usage: { totalTokens: 100 } },
+			},
+			observationsRecordedEntry("om-obs", { observations: [observation("aaaaaaaaaaaa")], coversUpToId: "assistant-1" }),
+			textCustomMessage("raw-2", "b"),
+		];
+		expect(realTokensSinceAnchor(coveredEntries as any, V3_OBSERVATIONS_RECORDED, 105)).toBe(5);
+		expect(realTokensSinceAnchor(coveredEntries as any, V3_OBSERVATIONS_RECORDED, 95)).toBeUndefined();
+
+		const compactedEntries = [
+			{
+				type: "message",
+				id: "assistant-before",
+				parentId: null,
+				timestamp: "2026-05-02T10:00:00.000Z",
+				message: { role: "assistant", stopReason: "end_turn", usage: { totalTokens: 900 } },
+			},
+			compactionEntry("cmp-1"),
+			{
+				type: "message",
+				id: "assistant-after",
+				parentId: null,
+				timestamp: "2026-05-02T10:00:00.000Z",
+				message: { role: "assistant", stopReason: "end_turn", usage: { totalTokens: 100 } },
+			},
+		];
+		expect(realTokensSinceAnchor(compactedEntries as any, undefined, 110)).toBe(10);
 	});
 });

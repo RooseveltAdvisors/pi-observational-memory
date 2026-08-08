@@ -30,6 +30,16 @@ import {
 	type TestEntry,
 } from "./fixtures/session.js";
 
+function assistantUsage(id: string, totalTokens: number): TestEntry {
+	return {
+		type: "message",
+		id,
+		parentId: null,
+		timestamp: "2026-05-02T10:00:00.000Z",
+		message: { role: "assistant", content: [], stopReason: "end_turn", usage: { totalTokens } },
+	};
+}
+
 beforeEach(() => {
 	mockAgents.runObserver.mockReset();
 	mockAgents.runReflector.mockReset();
@@ -51,6 +61,7 @@ function setup(args: {
 	consolidationInFlight?: boolean;
 	appendEntryReturnsId?: boolean;
 	sessionId?: string;
+	getContextUsage?: () => { tokens?: number | null; contextWindow?: number } | undefined;
 }) {
 	let entries = [...args.entries];
 	let sessionId = args.sessionId ?? "session-1";
@@ -110,6 +121,7 @@ function setup(args: {
 		ui: { notify: vi.fn() },
 		model: { provider: "session" },
 		modelRegistry: {},
+		getContextUsage: args.getContextUsage,
 		sessionManager: {
 			getBranch: () => entries,
 			getSessionId: () => sessionId,
@@ -188,6 +200,27 @@ describe("V3 consolidation trigger", () => {
 		fireAgentStart();
 
 		expect(runtime.launchConsolidationTask).toHaveBeenCalledTimes(1);
+	});
+
+	it("launches from provider-reported growth since observation coverage", async () => {
+		const entries = [
+			textCustomMessage("raw-1", "a"),
+			assistantUsage("assistant-1", 100),
+			observationsRecordedEntry("om-obs", { observations: [obsA], coversUpToId: "assistant-1" }),
+			textCustomMessage("raw-2", "b"),
+		];
+		const { fire, runLaunchedWork, runtime } = setup({
+			entries,
+			observeAfterTokens: 5,
+			reflectAfterTokens: 999,
+			getContextUsage: () => ({ tokens: 105, contextWindow: 200 }),
+		});
+
+		fire();
+		await runLaunchedWork();
+
+		expect(runtime.launchConsolidationTask).toHaveBeenCalledTimes(1);
+		expect(mockAgents.runObserver).toHaveBeenCalledWith(expect.objectContaining({ allowedSourceEntryIds: ["raw-2"] }));
 	});
 
 	it("uses the shared lock when agent_start fires before turn_end", () => {
@@ -296,7 +329,7 @@ describe("V3 consolidation trigger", () => {
 			[expect.stringMatching(/^Observational memory: observer running on ~\d+-token chunk$/), "info"],
 			["Observational memory: 1 observation recorded", "info"],
 			["Observational memory: reflector running (~2 tokens)", "info"],
-			["Observational memory: dropper running after reflection — active observation pool ~10 / 5 target tokens (200%)", "info"],
+			["Observational memory: dropper running after reflection — active observation pool ~19 / 5 target tokens (380%)", "info"],
 		]);
 	});
 

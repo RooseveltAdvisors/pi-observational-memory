@@ -93,6 +93,22 @@ describe("V3 compaction trigger", () => {
 		);
 	});
 
+	it("uses provider-reported context usage instead of raw source estimates", async () => {
+		const { handler } = captureHandler({ compactAfterTokens: 3 });
+		const ctx = fakeCtx([belowBranch], {
+			getContextUsage: vi.fn(() => ({ tokens: 3, contextWindow: 100 })),
+		});
+
+		handler(agentEnd(), ctx);
+		await vi.runAllTimersAsync();
+
+		expect(ctx.compact).toHaveBeenCalledTimes(1);
+		expect(ctx.ui.notify).toHaveBeenCalledWith(
+			"Observational memory: compaction threshold reached (~3 tokens); triggering compaction",
+			"info",
+		);
+	});
+
 	it("skips passive mode", async () => {
 		const { handler, runtime } = captureHandler({ passive: true });
 		const ctx = fakeCtx([dueBranch]);
