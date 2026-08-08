@@ -230,13 +230,15 @@ Most users can start with the defaults and tune only if they have a specific rea
 ### Scaling compaction to the model's context window
 
 By default `compactAfterTokensMode` is `"calibrated"`, so the proactive
-compaction trigger fires at the fixed `compactAfterTokens` value (81,000 by
-default). That is backwards-compatible and works well for typical ~128K–200K
-context models.
+compaction trigger fires when the current provider-reported context usage reaches
+the fixed `compactAfterTokens` value (81,000 by default). If the host cannot
+report usage, it falls back to the raw/source estimate since the last compaction.
+That is backwards-compatible and works well for typical ~128K–200K context
+models.
 
 On a large-context model (e.g. 1M tokens) the calibrated default preempts
-compaction at ~81K, wasting most of the window. Switch to `"ratio"` mode to let
-the trigger scale with the active model's `contextWindow`:
+compaction at ~81K context tokens, wasting most of the window. Switch to
+`"ratio"` mode to let the trigger scale with the active model's `contextWindow`:
 
 ```json
 {
@@ -250,8 +252,8 @@ the trigger scale with the active model's `contextWindow`:
 
 In ratio mode the effective threshold is
 `floor(model.contextWindow * compactAfterTokensRatio)` (clamped to a minimum of
-1). With the example above, a 1,000,000-token window compacts at ~500,000 raw
-tokens; a 200,000-token window compacts at ~100,000.
+1). With the example above, a 1,000,000-token window compacts at ~500,000
+current context tokens; a 200,000-token window compacts at ~100,000.
 
 `compactAfterTokensRatio` is user-tunable precisely because **context window ≠
 attention**. Some models advertise a large window but degrade at long range; set
@@ -268,14 +270,14 @@ on the `Next compaction` line regardless of mode.
 
 | Setting                     | Default       | Meaning                                                                                           |
 | --------------------------- | ------------- | ------------------------------------------------------------------------------------------------- |
-| `observeAfterTokens`        | `10000`       | Raw/source token threshold for observation runs.                                                  |
-| `observerChunkMaxTokens`    | derived       | Max estimated tokens serialized into one observer chunk (minimum `256`). Unset: `floor(contextWindow * 0.2)` of the resolved memory model, or `60000` when the window is unknown. Larger backlogs drain oldest-first; a single over-budget source is sent as a marked head/tail excerpt while the original source remains in the session ledger. |
-| `reflectAfterTokens`        | `20000`       | Raw/source token threshold for reflection runs; successful reflection creates dropper opportunities. |
-| `compactAfterTokens`        | `81000`       | Raw/source token threshold for proactive auto-compaction (used directly in `"calibrated"` mode, and as the fallback in `"ratio"` mode). |
+| `observeAfterTokens`        | `10000`       | Context-token growth threshold for observation runs; raw/source estimate fallback when provider usage is unavailable. See [configuration](docs/configuration.md#observeaftertokens). |
+| `observerChunkMaxTokens`    | derived       | Max estimated rendered tokens serialized into one observer chunk (minimum `256`). Unset: `floor(contextWindow * 0.2)` of the resolved memory model, or `60000` when the window is unknown. Larger backlogs drain oldest-first; a single over-budget source is sent as a marked head/tail excerpt while the original source remains in the session ledger. |
+| `reflectAfterTokens`        | `20000`       | Context-token growth threshold for reflection runs; raw/source estimate fallback when provider usage is unavailable. See [configuration](docs/configuration.md#reflectaftertokens). |
+| `compactAfterTokens`        | `81000`       | Current context-token threshold for proactive auto-compaction; raw/source estimate fallback when provider usage is unavailable. See [configuration](docs/configuration.md#compactaftertokens). |
 | `compactAfterTokensMode`    | `"calibrated"`| `"calibrated"` uses `compactAfterTokens` directly (default, backwards-compatible). `"ratio"` scales the threshold by the active model's `contextWindow`. |
 | `compactAfterTokensRatio`   | `0.68`        | In `"ratio"` mode, the threshold is `floor(contextWindow * ratio)`. Tunable because large windows do not always mean strong long-range attention. Must be in `(0, 1)`. |
-| `observationsPoolMaxTokens` | `20000`       | Observation-token budget used for compaction full-fold pressure.                                  |
-| `observationsPoolTargetTokens` | half of max | Active observation target used by post-reflection dropper maintenance.                            |
+| `observationsPoolMaxTokens` | `20000`       | Rendered observation-line token budget used for compaction full-fold pressure.                  |
+| `observationsPoolTargetTokens` | half of max | Rendered active observation-line target used by post-reflection dropper maintenance.             |
 | `agentMaxTurns`             | `16`          | Shared turn cap for background memory-agent loops.                                                |
 | `model`                     | session model | Optional memory-worker model override: `{ provider, id, thinking }`.                              |
 | `showWorkerNotifications`   | `true`        | Shows routine observer, reflector, and dropper progress notifications. Warnings and errors are unaffected. |
@@ -375,9 +377,9 @@ What this means in practice:
 
 | V2 setting                   | V3 setting                                              | What to do                                                                                                                                     |
 | ---------------------------- | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `observationThresholdTokens` | `observeAfterTokens`                                    | Rename. Same rough role: observation cadence based on raw/source tokens.                                                                       |
-| `compactionThresholdTokens`  | `compactAfterTokens`                                    | Rename. Same rough role: proactive compaction cadence.                                                                                         |
-| `reflectionThresholdTokens`  | `reflectAfterTokens`, `observationsPoolMaxTokens`, and/or `observationsPoolTargetTokens` | Split. Use `reflectAfterTokens` for reflection scheduling, `observationsPoolMaxTokens` for compaction full-fold pressure, and `observationsPoolTargetTokens` for dropper active observation maintenance. |
+| `observationThresholdTokens` | `observeAfterTokens`                                    | Rename. Same rough observer-cadence role; progress uses provider context-token growth when available, with a raw/source estimate fallback. |
+| `compactionThresholdTokens`  | `compactAfterTokens`                                    | Rename. Same rough proactive-compaction role; the current provider context-token count is preferred, with a raw/source estimate fallback. |
+| `reflectionThresholdTokens`  | `reflectAfterTokens`, `observationsPoolMaxTokens`, and/or `observationsPoolTargetTokens` | Split. Use `reflectAfterTokens` for reflector scheduling, `observationsPoolMaxTokens` for compaction full-fold pressure, and `observationsPoolTargetTokens` for dropper active observation maintenance. |
 | `compactionModel`            | `model`                                                 | Move `{ provider, id }` to `model`.                                                                                                            |
 | `thinkingLevel`              | `model.thinking`                                        | Move under `model`.                                                                                                                            |
 | `observerMaxTurnsPerRun`     | `agentMaxTurns`                                         | Replace with the shared memory-agent turn cap.                                                                                                 |

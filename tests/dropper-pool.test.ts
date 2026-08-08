@@ -9,10 +9,10 @@ describe("V3 dropper active observation pool metrics", () => {
 		const observations = [observation("aaaaaaaaaaaa", { relevance: "low", tokenCount: 20 })];
 
 		expect(observationPoolMetrics(observations, 100)).toMatchObject({
-			observationTokens: 20,
+			observationTokens: 18,
 			targetTokens: 100,
 			tokensOverTarget: 0,
-			fullness: 0.2,
+			fullness: 0.18,
 			activeObservationCount: 1,
 			droppableCount: 1,
 			overTarget: false,
@@ -26,9 +26,9 @@ describe("V3 dropper active observation pool metrics", () => {
 			observation("bbbbbbbbbbbb", { relevance: "medium", tokenCount: 50 }),
 		];
 
-		const metrics = observationPoolMetrics(observations, 100);
+		const metrics = observationPoolMetrics(observations, 37);
 
-		expect(metrics.observationTokens).toBe(100);
+		expect(metrics.observationTokens).toBe(37);
 		expect(metrics.fullness).toBe(1);
 		expect(metrics.tokensOverTarget).toBe(0);
 		expect(metrics.maxDropsAllowed).toBe(0);
@@ -43,12 +43,13 @@ describe("V3 dropper active observation pool metrics", () => {
 			observation("cccccccccccc", { relevance: "critical", tokenCount: 50 }),
 		];
 
-		const metrics = observationPoolMetrics(observations, 100);
+		const metrics = observationPoolMetrics(observations, 50);
 
-		expect(metrics.observationTokens).toBe(150);
-		expect(metrics.tokensOverTarget).toBe(50);
+		expect(metrics.observationTokens).toBe(56);
+		expect(metrics.tokensOverTarget).toBe(6);
 		expect(metrics.activeObservationCount).toBe(3);
 		expect(metrics.droppableCount).toBe(3);
+		expect(metrics.fullness).toBe(1.12);
 		expect(metrics.maxDropsAllowed).toBe(1);
 		expect(metrics.overTarget).toBe(true);
 		expect(metrics.ready).toBe(true);
@@ -62,7 +63,7 @@ describe("V3 dropper active observation pool metrics", () => {
 
 		const metrics = observationPoolMetrics(observations, 0);
 
-		expect(metrics.tokensOverTarget).toBe(2);
+		expect(metrics.tokensOverTarget).toBe(37);
 		expect(metrics.maxDropsAllowed).toBe(2);
 		expect(metrics.ready).toBe(true);
 	});
@@ -80,7 +81,7 @@ describe("V3 dropper active observation pool metrics", () => {
 		const metrics = observationPoolMetrics(folded.activeObservations, 100);
 
 		expect(folded.activeObservations.map((obs) => obs.id)).toEqual(["bbbbbbbbbbbb"]);
-		expect(metrics.observationTokens).toBe(20);
+		expect(metrics.observationTokens).toBe(18);
 		expect(metrics.overTarget).toBe(false);
 		expect(metrics.ready).toBe(false);
 	});

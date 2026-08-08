@@ -23,7 +23,7 @@ type Observation = {
   timestamp: string;          // YYYY-MM-DD HH:MM
   relevance: "low" | "medium" | "high" | "critical";
   sourceEntryIds: string[];   // raw/source entries that support this observation
-  tokenCount: number;         // estimated content tokens
+  tokenCount: number;         // estimated rendered line tokens, including metadata
 }
 ```
 
@@ -70,13 +70,13 @@ Dropping does not delete history. Dropped observations remain recallable from le
 
 ### Observer
 
-The observer runs asynchronously from `turn_end` when raw/source tokens after the latest observation coverage marker reach `observeAfterTokens`. After a deliberate empty result, it waits for another `observeAfterTokens` of source tokens before retrying the uncovered range.
+The observer runs asynchronously from `turn_end` when provider-reported context-token growth after the latest observation coverage marker reaches `observeAfterTokens`; it falls back to the raw/source estimate when usage is unavailable or has no reliable baseline. After a deliberate empty result, it waits for another threshold-sized increment of measured progress before retrying the uncovered range.
 
 It receives an oldest-first chunk of raw/source entries, validates source ids, and appends a non-empty `om.observations.recorded` entry. Chunking targets a fixed 60,000 estimated tokens but always includes at least one entry, so a single oversized entry cannot stall coverage. If there is nothing worth recording, it writes no entry and leaves the raw range uncovered.
 
 ### Reflector
 
-The reflector runs in the reflect/drop lane from `turn_end` when its raw-token clock reaches `reflectAfterTokens` and the observer is not due.
+The reflector runs in the reflect/drop lane from `turn_end` when provider-reported context-token growth reaches `reflectAfterTokens` (with a raw/source estimate fallback) and the observer is not due.
 
 It reads active observations and current reflections, then appends durable new reflections as `om.reflections.recorded`. Reflections must cite valid supporting observation ids. The reflector's coverage annotations describe current support state only; this first coverage-stewardship model does not repair historical coverage on existing reflections that already missed a supporting observation id.
 
@@ -134,7 +134,7 @@ Old V2 memory entry/details formats are ignored.
 
 ## `coversUpToId`
 
-`coversUpToId` is a progress watermark. It tells V3 where a worker's raw/source-token progress has reached.
+`coversUpToId` is a progress watermark. It tells V3 which source-entry boundary a worker has covered. Worker clocks use provider-reported context-token growth from that boundary when a reliable usage baseline exists, with raw/source-token estimates as the fallback.
 
 It is not:
 
@@ -144,7 +144,7 @@ It is not:
 
 Source provenance lives on `Observation.sourceEntryIds` and `Reflection.supportingObservationIds`.
 
-Progress counting uses raw/source tokens after the marker. Raw/source entries are `message`, `custom_message`, and `branch_summary` entries; memory ledger entries and compaction entries do not add raw-token progress.
+Raw/source estimates count only `message`, `custom_message`, and `branch_summary` entries after the marker; memory ledger entries and compaction entries do not add raw-token progress. Provider-reported context usage is preferred for worker clocks when available.
 
 ## Visible, full, and drift
 

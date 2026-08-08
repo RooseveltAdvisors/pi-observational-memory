@@ -54,12 +54,12 @@ You can omit everything. Defaults work for ordinary sessions, and if `model` is 
 
 | Setting | Type | Default | What it controls |
 | --- | ---: | ---: | --- |
-| `observeAfterTokens` | positive integer | `10000` | Raw/source token threshold for observer runs. |
-| `reflectAfterTokens` | positive integer | `20000` | Raw/source token threshold for reflector runs; successful reflection creates dropper maintenance opportunities. |
-| `observerChunkMaxTokens` | positive integer | derived; minimum `256` | Maximum estimated tokens sent to one observer run. Unset: 20% of the resolved memory model's context window, or `60000` when unknown. |
-| `compactAfterTokens` | positive integer | `81000` | Raw/source token threshold for proactive auto-compaction. |
-| `observationsPoolMaxTokens` | positive integer | `20000` | Normal compaction-projection observation-token pressure that makes compaction do a full fold. |
-| `observationsPoolTargetTokens` | positive integer below max | half of `observationsPoolMaxTokens` | Folded active observation target used by post-reflection dropper maintenance. |
+| `observeAfterTokens` | positive integer | `10000` | Provider-reported context-token growth threshold for observer runs when a reliable baseline is available; raw/source estimate fallback otherwise. |
+| `reflectAfterTokens` | positive integer | `20000` | Provider-reported context-token growth threshold for reflector runs when a reliable baseline is available; raw/source estimate fallback otherwise. Successful reflection creates dropper maintenance opportunities. |
+| `observerChunkMaxTokens` | positive integer | derived; minimum `256` | Maximum estimated rendered tokens sent to one observer run. Unset: 20% of the resolved memory model's context window, or `60000` when unknown. |
+| `compactAfterTokens` | positive integer | `81000` | Provider-reported current context-token threshold for proactive auto-compaction when available; raw/source estimate since the latest compaction boundary is the fallback. |
+| `observationsPoolMaxTokens` | positive integer | `20000` | Normal compaction-projection rendered observation-line token pressure that makes compaction do a full fold. |
+| `observationsPoolTargetTokens` | positive integer below max | half of `observationsPoolMaxTokens` | Folded active rendered observation-line target used by post-reflection dropper maintenance. |
 | `agentMaxTurns` | positive integer | `16` | Shared nested-agent turn cap for observer, reflector, and dropper. |
 | `model` | object | unset | Optional model override for observer, reflector, and dropper. |
 | `model.provider` | string | unset | Provider name in Pi's model registry. Required when `model` is set. |
@@ -77,9 +77,9 @@ Invalid values are ignored. Positive-integer settings must be finite integers gr
 
 Default: `10000`.
 
-The observer runs from Pi's `turn_end` hook. It counts raw/source tokens after the latest `om.observations.recorded.data.coversUpToId` marker. When the count reaches `observeAfterTokens`, the observer receives source entries after that marker and may append a non-empty `om.observations.recorded` ledger entry.
+The observer runs from Pi's `turn_end` hook. When Pi exposes provider-reported context usage, it measures context-token growth since the latest `om.observations.recorded.data.coversUpToId` marker and uses that value for the threshold. If usage is unavailable, unknown, or has no reliable baseline (for example, immediately after compaction), it falls back to the raw/source-token estimate. When the selected progress reaches `observeAfterTokens`, the observer receives source entries after that marker and may append a non-empty `om.observations.recorded` ledger entry.
 
-Lower values create smaller chunks and more frequent model calls. Higher values reduce model-call frequency but let unobserved raw conversation accumulate longer. If the observer deliberately emits no observations, no ledger entry is written; the same range remains uncovered, and the observer retries after another `observeAfterTokens` of source tokens accumulate.
+Lower values create smaller chunks and more frequent model calls. Higher values reduce model-call frequency but let unobserved raw conversation accumulate longer. If the observer deliberately emits no observations, no ledger entry is written; the same range remains uncovered, and the observer retries after another threshold-sized increment of measured progress.
 
 ## `observerChunkMaxTokens`
 
@@ -93,7 +93,7 @@ Set an explicit value when a provider exposes a context window that differs from
 
 Default: `20000`.
 
-The reflector uses this raw/source-token threshold. Reflector progress is counted after the latest `om.reflections.recorded.data.coversUpToId` marker.
+The reflector uses this context-token-growth threshold when provider usage and a reliable baseline are available. Growth is measured after the latest `om.reflections.recorded.data.coversUpToId` marker; the raw/source-token estimate is used when real usage cannot be measured reliably.
 
 The dropper no longer uses `reflectAfterTokens` as its own launch threshold. Dropper work is gated by successful reflection: after the reflector records non-empty reflections in a consolidation pass, the dropper may run if the folded active observation ledger is over `observationsPoolTargetTokens`. It can see same-turn new reflections before deciding what to prune.
 
@@ -103,7 +103,7 @@ Lower values distill reflections more often and therefore create more opportunit
 
 Default: `81000`.
 
-The auto-compaction trigger runs from Pi's `agent_end` hook. It counts raw/source tokens after the latest compaction boundary. If the count reaches `compactAfterTokens`, the extension defers with `setTimeout(0)`, checks that Pi is idle, re-checks the threshold, and calls `ctx.compact()`.
+The auto-compaction trigger runs from Pi's `agent_end` hook. When provider-reported context usage is available, it compares the current context-token count directly with `compactAfterTokens`. On older hosts or while usage is unknown, it falls back to the raw/source-token estimate after the latest compaction boundary. If the selected count reaches `compactAfterTokens`, the extension defers with `setTimeout(0)`, checks that Pi is idle, re-checks the threshold, and calls `ctx.compact()`.
 
 This trigger does not wait for observer, reflector, or dropper work. Actual compaction summary creation happens later in `session_before_compact`, where V3 compaction is deterministic and model-free.
 
@@ -113,7 +113,7 @@ Pi's own window-pressure compaction and manual compaction can still happen indep
 
 Default: `20000`.
 
-This controls V3's full-fold pressure. During compaction, the extension builds the normal compaction projection: observations whose `coversUpToId` reaches the compaction boundary, with reflection/drop effects held stable from the latest full fold. If there is no previous full fold, normal compaction includes observations only. If that projection's active observation tokens are at or above `observationsPoolMaxTokens`, compaction performs a full fold through the compaction boundary and applies observations, reflections, and drops by coverage marker. Otherwise, it keeps reflection/drop effects stable from the latest full fold and projects only observations through the new boundary.
+This controls V3's full-fold pressure. The budget sums each active observation's estimated rendered line footprint (`id`, timestamp, relevance, and content), not content alone. During compaction, the extension builds the normal compaction projection: observations whose `coversUpToId` reaches the compaction boundary, with reflection/drop effects held stable from the latest full fold. If there is no previous full fold, normal compaction includes observations only. If that projection's active observation tokens are at or above `observationsPoolMaxTokens`, compaction performs a full fold through the compaction boundary and applies observations, reflections, and drops by coverage marker. Otherwise, it keeps reflection/drop effects stable from the latest full fold and projects only observations through the new boundary.
 
 This is not the active observation dropper target and not a scheduling threshold for the reflector. Use `observationsPoolTargetTokens` for dropper active observation maintenance and `reflectAfterTokens` for reflector cadence.
 
@@ -121,7 +121,7 @@ This is not the active observation dropper target and not a scheduling threshold
 
 Default: half of `observationsPoolMaxTokens`.
 
-This controls the folded active observation target used by the dropper. If folded active observation tokens are at or below this target, the dropper has no maintenance work. If they are over target, the dropper can run only after the reflector records non-empty reflections in the same consolidation pass.
+This controls the folded active observation target, measured with each observation's estimated rendered line footprint. If folded active observation tokens are at or below this target, the dropper has no maintenance work. If they are over target, the dropper can run only after the reflector records non-empty reflections in the same consolidation pass.
 
 With the defaults, `observationsPoolMaxTokens` is `20000` and `observationsPoolTargetTokens` is `10000`. If the active observation pool reaches about `20000` tokens, the dropper computes a maximum count intended to move it back toward about `10000` tokens, but the model may drop fewer or none.
 
