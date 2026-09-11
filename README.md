@@ -6,6 +6,26 @@
 
 # pi-observational-memory
 
+## Demo: memory across sessions
+
+Teach Pi a fact, let observational memory capture it in the background, then open a fresh working context and ask for it again.
+
+![Animated demo: Pi records a fact, prepares memory, and recalls it in Session 2](assets/demo-memory.gif)
+
+*Hero: one fact travels from Session 1 into prepared memory, then comes back when Session 2 needs it.*
+
+![Session 1: teach Pi a representative project fact](assets/demo-session-1.png)
+
+*Session 1 — Pi records the Cedar Lantern release fact as an observation.*
+
+![Prepared observational memory shown with om:view full](assets/demo-memory-view.png)
+
+*Prepared memory — the compact fact stays visible and its source remains recallable.*
+
+![Session 2: ask Pi to recall the fact](assets/demo-session-2.png)
+
+*Session 2 — Pi answers from prepared memory instead of replaying the whole transcript.*
+
 > **Make Pi sessions feel endless.**
 
 `pi-observational-memory` is a Pi extension that keeps long agent sessions coherent across compactions, handoffs, and days of work.
